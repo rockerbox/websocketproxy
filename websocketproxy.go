@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-
+	gows "golang.org/x/net/websocket"	
 	"github.com/gorilla/websocket"
 )
 
@@ -71,9 +71,9 @@ func (w *WebsocketProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	dialer := w.Dialer
+	//dialer := w.Dialer
 	if w.Dialer == nil {
-		dialer = DefaultDialer
+		//dialer = DefaultDialer
 	}
 
 	// Pass headers from the incoming request to the dialer to forward them to
@@ -115,7 +115,10 @@ func (w *WebsocketProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// opening a new TCP connection time for each request. This should be
 	// optional:
 	// http://tools.ietf.org/html/draft-ietf-hybi-websocket-multiplexing-01
-	connBackend, resp, err := dialer.Dial(backendURL.String(), requestHeader)
+	//log.Printf(backendURL.String(),requestHeader)
+	//connBackend, resp, err := dialer.Dial(backendURL.String(), requestHeader)
+        
+	connBackend, err := gows.Dial(backendURL.String(), "", "http://streaming.apps.marathon.mesos:31000/websocket?id=123")
 	if err != nil {
 		log.Printf("websocketproxy: couldn't dial to remote backend url %s\n", err)
 		return
@@ -129,10 +132,12 @@ func (w *WebsocketProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// Only pass those headers to the upgrader.
 	upgradeHeader := http.Header{}
-	upgradeHeader.Set("Sec-WebSocket-Protocol",
-		resp.Header.Get(http.CanonicalHeaderKey("Sec-WebSocket-Protocol")))
-	upgradeHeader.Set("Set-Cookie",
-		resp.Header.Get(http.CanonicalHeaderKey("Set-Cookie")))
+	upgradeHeader.Set("Connection","upgrade")
+	upgradeHeader.Set("Upgrade","websocket")
+	//upgradeHeader.Set("Sec-WebSocket-Protocol",
+	//	resp.Header.Get(http.CanonicalHeaderKey("Sec-WebSocket-Protocol")))
+	//upgradeHeader.Set("Set-Cookie",
+	//	resp.Header.Get(http.CanonicalHeaderKey("Set-Cookie")))
 
 	// Now upgrade the existing incoming request to a WebSocket connection.
 	// Also pass the header that we gathered from the Dial handshake.
@@ -150,7 +155,7 @@ func (w *WebsocketProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// Start our proxy now, everything is ready...
-	go cp(connBackend.UnderlyingConn(), connPub.UnderlyingConn())
-	go cp(connPub.UnderlyingConn(), connBackend.UnderlyingConn())
+	go cp(connBackend, connPub.UnderlyingConn())
+	go cp(connPub.UnderlyingConn(), connBackend)
 	<-errc
 }
